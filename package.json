@@ -1,16 +1,16 @@
 {
 	"name": "system-prompt",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Choose Markdown system prompts for Pi and prepend, append, or replace the default prompt.",
 	"type": "module",
 	"license": "MIT",
 	"author": "thgilciffart",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/thgilciffart/system-prompt.git"
+		"url": "git+https://github.com/thgilciffart/pi-system-prompt.git"
 	},
-	"homepage": "https://github.com/thgilciffart/system-prompt#readme",
-	"bugs": "https://github.com/thgilciffart/system-prompt/issues",
+	"homepage": "https://github.com/thgilciffart/pi-system-prompt#readme",
+	"bugs": "https://github.com/thgilciffart/pi-system-prompt/issues",
 	"keywords": ["pi-package", "pi", "extension", "system-prompt", "markdown"],
 	"files": ["src", "docs", "examples", "README.md", "CHANGELOG.md", "LICENSE"],
 	"pi": { "extensions": ["./src/index.ts"] },

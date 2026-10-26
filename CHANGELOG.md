@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Update the npm repository, homepage, and issue links to `thgilciffart/pi-system-prompt`.
+
 ## 0.1.0
 
 - Select Markdown system prompts from Pi's agent directory.
