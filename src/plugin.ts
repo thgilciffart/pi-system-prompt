@@ -1,19 +1,21 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { PromptViewer } from "./viewer.ts";
 import {
 	composePrompt, defaultSettings, isMode, listPrompts, loadSettings, MODES,
 	readPrompt, resolvePrompt, saveSettings, type Paths, type Settings,
 } from "./store.ts";
 
 const HELP = [
-	"/sys-prompt                 Choose a prompt",
-	"/sys-prompt use <name>      Select and enable a prompt",
-	"/sys-prompt mode <mode>     Set prepend, append, or replace",
-	"/sys-prompt mode            Choose a mode",
-	"/sys-prompt list            List Markdown files",
-	"/sys-prompt status          Show settings and file health",
-	"/sys-prompt off             Disable the selected prompt",
-	"/sys-prompt on              Enable the selected prompt",
-	"/sys-prompt help            Show these commands",
+	"/system-prompt                 Choose a prompt",
+	"/system-prompt use <name>      Select and enable a prompt",
+	"/system-prompt mode <mode>     Set prepend, append, or replace",
+	"/system-prompt mode            Choose a mode",
+	"/system-prompt list            List Markdown files",
+	"/system-prompt status          Show settings and file health",
+	"/system-prompt toggle          Enable or disable the selected prompt",
+	"/system-prompt view            View Pi's complete current system prompt",
+	"/system-prompt view <name>     View a Markdown file without selecting it",
+	"/system-prompt help            Show these commands",
 ].join("\n");
 
 function errorMessage(error: unknown): string {
@@ -33,14 +35,14 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 		configError = `Cannot load ${paths.settings}: ${errorMessage(error)} Repair or remove the file, then run /reload.`;
 	}
 
-	pi.registerFlag("sys-prompt", { type: "string", description: "Select a system prompt for this Pi process" });
-	pi.registerFlag("sys-prompt-mode", { type: "string", description: "System prompt mode: prepend, append, or replace" });
+	pi.registerFlag("system-prompt-name", { type: "string", description: "Select a system prompt for this Pi process" });
+	pi.registerFlag("system-prompt-mode", { type: "string", description: "System prompt mode: prepend, append, or replace" });
 
 	function updateFooter(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
-		const status = configError || overrideError || promptError ? "sys-prompt: error" : settings.enabled && settings.prompt
-			? `sys-prompt: ${settings.prompt} (${settings.mode})` : "sys-prompt: off";
-		ctx.ui.setStatus("pi-sys-prompt", status);
+		const status = configError || overrideError || promptError ? "system-prompt: error" : settings.enabled && settings.prompt
+			? `system-prompt: ${settings.prompt} (${settings.mode})` : "system-prompt: off";
+		ctx.ui.setStatus("system-prompt", status);
 	}
 
 	function warn(ctx: ExtensionContext, message: string): void {
@@ -55,7 +57,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 		let error: string | undefined;
 		try {
 			if (selected.enabled) {
-				if (!selected.prompt) throw new Error("No prompt selected. Run /sys-prompt use <name>.");
+				if (!selected.prompt) throw new Error("No prompt selected. Run /system-prompt use <name>.");
 				custom = await readPrompt(paths.prompts, selected.prompt);
 			}
 		} catch (cause) {
@@ -70,11 +72,11 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 			initialized = true;
 			if (!configError) {
 				try {
-					const name = pi.getFlag("sys-prompt");
-					const mode = pi.getFlag("sys-prompt-mode");
+					const name = pi.getFlag("system-prompt-name");
+					const mode = pi.getFlag("system-prompt-mode");
 					const next = { ...settings };
 					if (typeof mode === "string") {
-						if (!isMode(mode)) throw new Error("--sys-prompt-mode must be prepend, append, or replace.");
+						if (!isMode(mode)) throw new Error("--system-prompt-mode must be prepend, append, or replace.");
 						next.mode = mode;
 					}
 					if (typeof name === "string") {
@@ -87,7 +89,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 					// An invalid override must not silently activate the saved prompt.
 					settings = { ...settings, enabled: false };
 					overrideError = errorMessage(error);
-					warn(ctx, `pi-sys-prompt: ${overrideError} Custom prompt disabled.`);
+					warn(ctx, `system-prompt: ${overrideError} Custom prompt disabled.`);
 					updateFooter(ctx);
 					return;
 				}
@@ -96,7 +98,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 		if (configError) warn(ctx, configError);
 		else {
 			await checkPrompt();
-			if (promptError) warn(ctx, `pi-sys-prompt: ${promptError} Keeping Pi's incoming system prompt.`);
+			if (promptError) warn(ctx, `system-prompt: ${promptError} Keeping Pi's incoming system prompt.`);
 		}
 		updateFooter(ctx);
 	}
@@ -132,23 +134,24 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 		const { custom, error } = await checkPrompt(selected);
 		updateFooter(ctx);
 		if (error) {
-			warn(ctx, `pi-sys-prompt: ${error} Keeping Pi's incoming system prompt.`);
+			warn(ctx, `system-prompt: ${error} Keeping Pi's incoming system prompt.`);
 			return;
 		}
 		lastWarning = undefined;
 		if (custom !== undefined) return { systemPrompt: composePrompt(event.systemPrompt, custom, selected.mode) };
 	});
 
-	pi.registerCommand("sys-prompt", {
-		description: "Choose, list, or disable Markdown system prompts",
+	pi.registerCommand("system-prompt", {
+		description: "Manage system prompts and view Pi's complete current prompt",
 		getArgumentCompletions: async (prefix) => {
-			const commands = ["use", "mode", "list", "status", "off", "on", "help"];
+			const commands = ["use", "mode", "list", "status", "toggle", "view", "help"];
 			if (prefix.startsWith("mode ")) {
 				return MODES.map((mode) => ({ value: `mode ${mode}`, label: mode })).filter((item) => item.value.startsWith(prefix));
 			}
-			if (prefix.startsWith("use ")) {
+			if (prefix.startsWith("use ") || prefix.startsWith("view ")) {
 				try {
-					return (await listPrompts(paths.prompts)).map((id) => ({ value: `use ${id}`, label: id }))
+					const command = prefix.startsWith("use ") ? "use" : "view";
+					return (await listPrompts(paths.prompts)).map((id) => ({ value: `${command} ${id}`, label: id }))
 						.filter((item) => item.value.startsWith(prefix));
 				} catch {
 					return null;
@@ -164,7 +167,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 			try {
 				switch (command) {
 					case "": {
-						if (!ctx.hasUI) throw new Error("Use /sys-prompt use <name> when dialogs are unavailable.");
+						if (!ctx.hasUI) throw new Error("Use /system-prompt use <name> when dialogs are unavailable.");
 						const prompts = await listPrompts(paths.prompts);
 						if (!prompts.length) throw new Error(`No Markdown prompts found. Add a .md file to ${paths.prompts}.`);
 						const selected = await ctx.ui.select("Choose a system prompt", prompts);
@@ -172,28 +175,39 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 						break;
 					}
 					case "use":
-						if (!value) throw new Error("Usage: /sys-prompt use <name>");
+						if (!value) throw new Error("Usage: /system-prompt use <name>");
 						await usePrompt(value, ctx);
 						break;
 					case "mode": {
-						if (!value && !ctx.hasUI) throw new Error("Usage: /sys-prompt mode <prepend|append|replace>");
+						if (!value && !ctx.hasUI) throw new Error("Usage: /system-prompt mode <prepend|append|replace>");
 						const mode = value || await ctx.ui.select("Choose a system prompt mode", [...MODES]);
 						if (mode === undefined) break;
 						if (!isMode(mode)) throw new Error("Mode must be prepend, append, or replace.");
 						await commit({ ...settings, mode }, ctx);
 						break;
 					}
-					case "off":
-					case "on":
-						if (value) throw new Error(`Usage: /sys-prompt ${command}`);
-						if (command === "on") {
-							if (!settings.prompt) throw new Error("No prompt selected. Run /sys-prompt use <name>.");
+					case "toggle":
+						if (value) throw new Error("Usage: /system-prompt toggle");
+						if (!settings.enabled) {
+							if (!settings.prompt) throw new Error("No prompt selected. Run /system-prompt use <name>.");
 							await readPrompt(paths.prompts, settings.prompt);
 						}
-						await commit({ ...settings, enabled: command === "on" }, ctx);
+						await commit({ ...settings, enabled: !settings.enabled }, ctx);
 						break;
+					case "view": {
+						if (ctx.mode !== "tui") throw new Error("The full-screen prompt viewer requires Pi's interactive terminal mode.");
+						const prompt = value ? await resolvePrompt(paths.prompts, value) : undefined;
+						const content = prompt ? await readPrompt(paths.prompts, prompt) : ctx.getSystemPrompt();
+						const title = prompt ? `Prompt file: ${prompt}` : "Current Pi system prompt";
+						await ctx.ui.custom<void>((tui, theme, keybindings, done) =>
+							new PromptViewer(tui, theme, keybindings, title, content, () => done()), {
+								overlay: true,
+								overlayOptions: { width: "100%", maxHeight: "100%", row: 0, col: 0, margin: 0 },
+							});
+						break;
+					}
 					case "list": {
-						if (value) throw new Error("Usage: /sys-prompt list");
+						if (value) throw new Error("Usage: /system-prompt list");
 						const prompts = await listPrompts(paths.prompts);
 						ctx.ui.notify(prompts.length
 							? `System prompts in ${paths.prompts}:\n${prompts.map((id) => `${id === settings.prompt ? "* " : "  "}${id}`).join("\n")}`
@@ -201,7 +215,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 						break;
 					}
 					case "status": {
-						if (value) throw new Error("Usage: /sys-prompt status");
+						if (value) throw new Error("Usage: /system-prompt status");
 						await checkPrompt();
 						updateFooter(ctx);
 						ctx.ui.notify([
@@ -215,11 +229,11 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 						break;
 					}
 					case "help":
-						if (value) throw new Error("Usage: /sys-prompt help");
+						if (value) throw new Error("Usage: /system-prompt help");
 						ctx.ui.notify(HELP, "info");
 						break;
 					default:
-						throw new Error(`Unknown command: ${command}. Run /sys-prompt help.`);
+						throw new Error(`Unknown command: ${command}. Run /system-prompt help.`);
 				}
 			} catch (error) {
 				ctx.ui.notify(errorMessage(error), "error");

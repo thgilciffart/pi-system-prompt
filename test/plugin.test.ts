@@ -5,8 +5,9 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import type {
 	BeforeAgentStartEvent, BeforeAgentStartEventResult, ExtensionAPI, ExtensionCommandContext,
-	ExtensionContext, RegisteredCommand,
+	ExtensionContext, RegisteredCommand, Theme,
 } from "@earendil-works/pi-coding-agent";
+import { getKeybindings, type Component, type TUI } from "@earendil-works/pi-tui";
 import { registerPlugin } from "../src/plugin.ts";
 import { loadSettings, saveSettings, type Paths } from "../src/store.ts";
 
@@ -14,9 +15,9 @@ type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
 type Command = Omit<RegisteredCommand, "name" | "sourceInfo">;
 
 async function fixture(t: TestContext): Promise<Paths> {
-	const root = await mkdtemp(join(tmpdir(), "pi-sys-prompt-plugin-"));
+	const root = await mkdtemp(join(tmpdir(), "system-prompt-plugin-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
-	const paths = { prompts: join(root, "system-prompts"), settings: join(root, "pi-sys-prompt.json") };
+	const paths = { prompts: join(root, "system-prompts"), settings: join(root, "system-prompt.json") };
 	await mkdir(join(paths.prompts, "review"), { recursive: true });
 	await writeFile(join(paths.prompts, "reviewer.md"), "Review carefully.\n");
 	await writeFile(join(paths.prompts, "review", "backend.md"), "Review the backend.");
@@ -29,30 +30,42 @@ async function load(paths: Paths, flags: Record<string, string | undefined> = {}
 	const notifications: { message: string; type: string | undefined }[] = [];
 	const statuses = new Map<string, string>();
 	const choices: (string | undefined)[] = [];
+	const viewers: { component: Component; options: unknown }[] = [];
+	let currentSystemPrompt = "Pi base prompt";
 	const pi = {
 		on: (event: string, handler: Handler) => handlers.set(event, handler),
 		registerFlag: () => {},
 		getFlag: (name: string) => flags[name],
 		registerCommand: (name: string, options: Command) => {
-			assert.equal(name, "sys-prompt");
+			assert.equal(name, "system-prompt");
 			command = options;
 		},
 	} as unknown as ExtensionAPI;
 	const ctx = {
 		hasUI: true,
 		mode: "tui",
+		getSystemPrompt: () => currentSystemPrompt,
 		ui: {
 			notify: (message: string, type?: string) => notifications.push({ message, type }),
 			setStatus: (key: string, text: string) => statuses.set(key, text),
 			select: async () => choices.shift(),
+			custom: async (factory: Parameters<ExtensionContext["ui"]["custom"]>[0], options: unknown) => {
+				const tui = { terminal: { rows: 12 }, requestRender: () => {} } as unknown as TUI;
+				const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as Theme;
+				const component = await factory(tui, theme, getKeybindings() as Parameters<typeof factory>[2], () => {});
+				viewers.push({ component, options });
+			},
 		},
 	} as unknown as ExtensionCommandContext;
 	await registerPlugin(pi, paths);
 	const start = () => handlers.get("session_start")!({ type: "session_start" }, ctx);
-	const run = async (base = "Pi base prompt"): Promise<BeforeAgentStartEventResult | undefined> =>
-		await handlers.get("before_agent_start")!({ systemPrompt: base } as BeforeAgentStartEvent, ctx) as BeforeAgentStartEventResult | undefined;
+	const run = async (base = "Pi base prompt"): Promise<BeforeAgentStartEventResult | undefined> => {
+		const result = await handlers.get("before_agent_start")!({ systemPrompt: base } as BeforeAgentStartEvent, ctx) as BeforeAgentStartEventResult | undefined;
+		currentSystemPrompt = result?.systemPrompt ?? base;
+		return result;
+	};
 	return {
-		ctx, notifications, statuses, choices, start, run,
+		ctx, notifications, statuses, choices, viewers, start, run,
 		command: (args: string) => command.handler(args, ctx),
 		complete: (prefix: string) => command.getArgumentCompletions!(prefix),
 	};
@@ -70,12 +83,12 @@ test("selection, mode, disable, and enable persist and compose on the next run",
 	assert.equal((await plugin.run())?.systemPrompt, "Review carefully.\n\n\nPi base prompt");
 	await plugin.command("mode replace");
 	assert.equal((await plugin.run())?.systemPrompt, "Review carefully.\n");
-	await plugin.command("off");
+	await plugin.command("toggle");
 	assert.equal(await plugin.run(), undefined);
 	assert.equal((await loadSettings(paths.settings)).prompt, "reviewer.md");
-	await plugin.command("on");
+	await plugin.command("toggle");
 	assert.equal((await plugin.run())?.systemPrompt, "Review carefully.\n");
-	assert.match(plugin.statuses.get("pi-sys-prompt")!, /reviewer.md \(replace\)/);
+	assert.match(plugin.statuses.get("system-prompt")!, /reviewer.md \(replace\)/);
 	const restarted = await load(paths);
 	await restarted.start();
 	assert.equal((await restarted.run())?.systemPrompt, "Review carefully.\n");
@@ -100,7 +113,7 @@ test("missing and empty active files preserve Pi's prompt, report errors, and re
 	await plugin.command("use reviewer");
 	await rm(join(paths.prompts, "reviewer.md"));
 	assert.equal(await plugin.run(), undefined);
-	assert.equal(plugin.statuses.get("pi-sys-prompt"), "sys-prompt: error");
+	assert.equal(plugin.statuses.get("system-prompt"), "system-prompt: error");
 	const errorCount = plugin.notifications.filter((item) => item.type === "error").length;
 	await plugin.run();
 	assert.equal(plugin.notifications.filter((item) => item.type === "error").length, errorCount);
@@ -111,14 +124,14 @@ test("missing and empty active files preserve Pi's prompt, report errors, and re
 	assert.match(plugin.notifications.at(-1)!.message, /empty/);
 	await writeFile(join(paths.prompts, "reviewer.md"), "Recovered");
 	assert.equal((await plugin.run())?.systemPrompt, "Pi base prompt\n\nRecovered");
-	assert.match(plugin.statuses.get("pi-sys-prompt")!, /reviewer.md/);
+	assert.match(plugin.statuses.get("system-prompt")!, /reviewer.md/);
 });
 
 test("invalid commands and failed saves do not change the active selection", async (t) => {
 	const paths = await fixture(t);
 	const plugin = await load(paths);
 	await plugin.command("use reviewer");
-	for (const command of ["mode invalid", "use missing", "use ../escape", "on extra", "status extra", "unknown", "use"]) {
+	for (const command of ["mode invalid", "use missing", "use ../escape", "toggle extra", "status extra", "unknown", "use", "on", "off"]) {
 		await plugin.command(command);
 		assert.equal(plugin.notifications.at(-1)!.type, "error");
 	}
@@ -156,12 +169,14 @@ test("listing, status, help, and completions expose prompt names without changin
 	await plugin.command("status");
 	assert.match(plugin.notifications.at(-1)!.message, /State: disabled\nPrompt: none\nMode: append/);
 	await plugin.command("help");
-	assert.match(plugin.notifications.at(-1)!.message, /\/sys-prompt off/);
+	assert.match(plugin.notifications.at(-1)!.message, /\/system-prompt toggle/);
 	assert.deepEqual((await plugin.complete("mo"))?.map((item) => item.value), ["mode"]);
 	assert.deepEqual((await plugin.complete("mode re"))?.map((item) => item.value), ["mode replace"]);
 	assert.deepEqual((await plugin.complete("use review/"))?.map((item) => item.value), ["use review/backend.md"]);
+	assert.deepEqual((await plugin.complete("view review/"))?.map((item) => item.value), ["view review/backend.md"]);
+	assert.deepEqual((await plugin.complete("tog"))?.map((item) => item.value), ["toggle"]);
 	await assert.rejects(readFile(paths.settings), { code: "ENOENT" });
-	await plugin.command("on");
+	await plugin.command("toggle");
 	assert.match(plugin.notifications.at(-1)!.message, /No prompt selected/);
 });
 
@@ -169,18 +184,18 @@ test("startup flags apply without writes and invalid flags disable the saved pro
 	const paths = await fixture(t);
 	await saveSettings(paths.settings, { enabled: true, prompt: "reviewer.md", mode: "append" });
 	const stored = await readFile(paths.settings, "utf8");
-	const plugin = await load(paths, { "sys-prompt": "review/backend", "sys-prompt-mode": "replace" });
+	const plugin = await load(paths, { "system-prompt-name": "review/backend", "system-prompt-mode": "replace" });
 	await plugin.start();
 	assert.equal((await plugin.run())?.systemPrompt, "Review the backend.");
 	assert.equal(await readFile(paths.settings, "utf8"), stored);
-	for (const flags of [{ "sys-prompt": "missing" }, { "sys-prompt-mode": "wrong" }, { "sys-prompt": "" }]) {
+	for (const flags of [{ "system-prompt-name": "missing" }, { "system-prompt-mode": "wrong" }, { "system-prompt-name": "" }]) {
 		const invalid = await load(paths, flags);
 		await invalid.start();
 		assert.equal(await invalid.run(), undefined);
 		await invalid.command("status");
 		assert.match(invalid.notifications.at(-1)!.message, /State: error/);
 		assert.equal(await readFile(paths.settings, "utf8"), stored);
-		await invalid.command("on");
+		await invalid.command("toggle");
 		assert.equal((await invalid.run())?.systemPrompt, "Pi base prompt\n\nReview carefully.\n");
 	}
 });
@@ -193,7 +208,7 @@ test("invalid saved settings remain untouched and the error appears in status", 
 	assert.equal(await plugin.run(), undefined);
 	await plugin.command("status");
 	assert.match(plugin.notifications.at(-1)!.message, /State: error/);
-	for (const command of ["use reviewer", "mode replace", "off"]) {
+	for (const command of ["use reviewer", "mode replace", "toggle"]) {
 		await plugin.command(command);
 		assert.equal(plugin.notifications.at(-1)!.type, "error");
 		assert.equal(await readFile(paths.settings, "utf8"), "{invalid");
@@ -202,7 +217,7 @@ test("invalid saved settings remain untouched and the error appears in status", 
 
 test("explicit commands and startup overrides work without dialogs", async (t) => {
 	const paths = await fixture(t);
-	const plugin = await load(paths, { "sys-prompt": "reviewer", "sys-prompt-mode": "prepend" });
+	const plugin = await load(paths, { "system-prompt-name": "reviewer", "system-prompt-mode": "prepend" });
 	plugin.ctx.hasUI = false;
 	plugin.ctx.ui.select = async () => { throw new Error("Must not open a dialog"); };
 	await plugin.start();
@@ -213,4 +228,54 @@ test("explicit commands and startup overrides work without dialogs", async (t) =
 	assert.equal(plugin.notifications.at(-1)!.type, "error");
 	await plugin.command("use review/backend");
 	assert.equal((await plugin.run())?.systemPrompt, "Review the backend.\n\nPi base prompt");
+});
+
+test("view opens the full current Pi prompt and does not apply pending changes twice", async (t) => {
+	const paths = await fixture(t);
+	const plugin = await load(paths);
+	await plugin.command("view");
+	assert.match(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Current Pi system prompt[\s\S]*Pi base prompt/);
+	await plugin.command("use reviewer");
+	await plugin.run();
+	const stored = await readFile(paths.settings, "utf8");
+	await plugin.command("view");
+	const view = plugin.viewers.at(-1)!;
+	const rendered = view.component.render(100).join("\n");
+	assert.match(rendered, /Pi base prompt[\s\S]*Review carefully/);
+	assert.equal(rendered.split("Review carefully").length - 1, 1);
+	assert.deepEqual(view.options, {
+		overlay: true,
+		overlayOptions: { width: "100%", maxHeight: "100%", row: 0, col: 0, margin: 0 },
+	});
+	await plugin.command("mode replace");
+	await plugin.command("view");
+	assert.match(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Pi base prompt/);
+	await plugin.run();
+	await plugin.command("view");
+	assert.doesNotMatch(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Pi base prompt/);
+	assert.equal((await loadSettings(paths.settings)).prompt, JSON.parse(stored).prompt);
+});
+
+test("viewing a named file does not select it or save settings", async (t) => {
+	const paths = await fixture(t);
+	const plugin = await load(paths);
+	await plugin.command("view review/backend");
+	const rendered = plugin.viewers.at(-1)!.component.render(100).join("\n");
+	assert.match(rendered, /Prompt file: review\/backend.md/);
+	assert.match(rendered, /Review the backend/);
+	await assert.rejects(readFile(paths.settings), { code: "ENOENT" });
+	assert.equal(await plugin.run(), undefined);
+	await plugin.command("view missing");
+	assert.equal(plugin.notifications.at(-1)!.type, "error");
+});
+
+test("the full-screen viewer rejects RPC and print modes before opening custom UI", async (t) => {
+	const paths = await fixture(t);
+	const plugin = await load(paths);
+	for (const mode of ["rpc", "print", "json"] as const) {
+		plugin.ctx.mode = mode;
+		await plugin.command("view");
+		assert.match(plugin.notifications.at(-1)!.message, /requires Pi's interactive terminal mode/);
+	}
+	assert.equal(plugin.viewers.length, 0);
 });

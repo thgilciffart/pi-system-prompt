@@ -1,4 +1,4 @@
-# Develop and publish pi-sys-prompt
+# Develop and publish system-prompt
 
 ## Run the checks
 
@@ -29,10 +29,10 @@ To keep the local checkout installed, run `pi install .` from the repository. Ru
 To test with separate settings, set Pi's agent directory for the invocation.
 
 ```sh
-PI_CODING_AGENT_DIR=/tmp/pi-sys-prompt-dev pi -e .
+PI_CODING_AGENT_DIR=/tmp/system-prompt-dev pi -e .
 ```
 
-Add test prompts under `/tmp/pi-sys-prompt-dev/system-prompts/`. This invocation also uses separate Pi authentication and settings.
+Add test prompts under `/tmp/system-prompt-dev/system-prompts/`. This invocation also uses separate Pi authentication and settings.
 
 ## Publish a release
 

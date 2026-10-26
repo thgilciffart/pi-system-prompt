@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { composePrompt, defaultSettings, listPrompts, loadSettings, readPrompt, resolvePrompt, saveSettings } from "../src/store.ts";
 
 async function fixture(t: TestContext): Promise<string> {
-	const root = await mkdtemp(join(tmpdir(), "pi-sys-prompt-store-"));
+	const root = await mkdtemp(join(tmpdir(), "system-prompt-store-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	return root;
 }
@@ -59,12 +59,12 @@ test("reading preserves all Markdown and rejects empty or escaping paths", async
 
 test("settings default to disabled, round-trip atomically, and reject malformed data", async (t) => {
 	const root = await fixture(t);
-	const file = join(root, "agent", "pi-sys-prompt.json");
+	const file = join(root, "agent", "system-prompt.json");
 	assert.deepEqual(await loadSettings(file), defaultSettings());
 	const settings = { enabled: true, prompt: "review/backend.md", mode: "prepend" } as const;
 	await saveSettings(file, settings);
 	assert.deepEqual(await loadSettings(file), settings);
-	assert.deepEqual(await readdir(join(root, "agent")), ["pi-sys-prompt.json"]);
+	assert.deepEqual(await readdir(join(root, "agent")), ["system-prompt.json"]);
 	if (process.platform !== "win32") assert.equal((await stat(file)).mode & 0o777, 0o600);
 	for (const content of ["{", "null", "[]", "{}", '{"enabled":"yes","prompt":null,"mode":"append"}',
 		'{"enabled":true,"prompt":"../escape.md","mode":"append"}',
@@ -77,10 +77,10 @@ test("settings default to disabled, round-trip atomically, and reject malformed 
 
 test("a failed settings rename leaves no temporary file", async (t) => {
 	const root = await fixture(t);
-	const directory = join(root, "pi-sys-prompt.json");
+	const directory = join(root, "system-prompt.json");
 	await mkdir(directory);
 	await assert.rejects(saveSettings(directory, defaultSettings()));
-	assert.deepEqual(await readdir(root), ["pi-sys-prompt.json"]);
+	assert.deepEqual(await readdir(root), ["system-prompt.json"]);
 });
 
 test("composition preserves exact file content and inserts only the separator", () => {

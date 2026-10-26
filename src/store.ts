@@ -97,7 +97,7 @@ export async function resolvePrompt(directory: string, name: string): Promise<st
 	const matches = prompts.filter((id) => id.replace(/\.md$/i, "") === name);
 	if (matches.length === 1) return matches[0];
 	if (matches.length > 1) throw new Error(`Prompt name is ambiguous: ${name}. Include the file extension.`);
-	throw new Error(`Prompt not found: ${name}. Run /sys-prompt list.`);
+	throw new Error(`Prompt not found: ${name}. Run /system-prompt list.`);
 }
 
 export async function readPrompt(directory: string, id: string): Promise<string> {
