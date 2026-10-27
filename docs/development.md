@@ -1,48 +1,30 @@
 # Develop and publish system-prompt
 
-## Run the checks
-
-Install the development dependencies from the lockfile.
+## Check a local checkout
 
 ```sh
 npm ci --ignore-scripts
-```
-
-Run the type checker and tests.
-
-```sh
 npm run check
-```
-
-The tests use temporary directories. They do not change your Pi settings or make model requests.
-
-## Try the extension locally
-
-Load the package for one Pi invocation.
-
-```sh
 pi -e .
 ```
 
-To keep the local checkout installed, run `pi install .` from the repository. Run `/reload` after source changes.
+Tests use temporary directories without changing your Pi settings or making model requests.
 
-To test with separate settings, set Pi's agent directory for the invocation.
+To use separate Pi settings and authentication, run:
 
 ```sh
 PI_CODING_AGENT_DIR=/tmp/system-prompt-dev pi -e .
 ```
 
-Add test prompts under `/tmp/system-prompt-dev/system-prompts/`. This invocation also uses separate Pi authentication and settings.
+Put test prompts in `/tmp/system-prompt-dev/system-prompts/`. To keep a checkout installed, run `pi install .` and use `/reload` after source changes.
 
 ## Publish a release
 
-1. Update the version in `package.json` and the lockfile with `npm version <version> --no-git-tag-version`.
-2. Add the release changes to `CHANGELOG.md`.
+1. Update the version with `npm version patch` or the required release type.
+2. Add release notes to `CHANGELOG.md` and commit them.
 3. Run `npm run check`.
-4. Run `npm pack --dry-run` and inspect the file list. The archive includes source, documentation, examples, and the license.
-5. Commit the release files and create a version tag.
-6. Sign in to the npm account that owns the package name with `npm login`.
-7. Run `npm publish --access public`. The `prepublishOnly` script repeats the checks.
-8. Push the release commit and tag to GitHub.
+4. Inspect the file list with `npm pack --dry-run`.
+5. Sign in with `npm login` and publish with `npm publish --access public`.
+6. Push the release commits and version tag.
 
-The package manifest includes `pi.extensions` and the `pi-package` keyword. After npm publication, the keyword makes the package eligible for discovery on [pi.dev/packages](https://pi.dev/packages), as described in Pi's [package documentation](https://pi.dev/docs/latest/packages). Catalog indexing happens outside this repository.
+The npm name is `system-prompt`. The `prepublishOnly` hook repeats the checks. Keep `pi.extensions` and the `pi-package` keyword in the manifest.
