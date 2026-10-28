@@ -51,7 +51,7 @@ Replace discards the incoming system prompt, including Pi's built-in instruction
 | --- | --- |
 | `/system-prompt list` | List prompt files. |
 | `/system-prompt status` | Show the selection, mode, settings paths, and errors. |
-| `/system-prompt view` | View Pi's complete current system prompt. Send a message after changes to apply them first. |
+| `/system-prompt view` | Preview the selected prompt and mode immediately. |
 | `/system-prompt view reviewer` | Read a file without selecting it. |
 | `/system-prompt toggle` | Disable or enable the selected file without forgetting it. |
 

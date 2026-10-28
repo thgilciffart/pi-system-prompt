@@ -13,7 +13,7 @@ const HELP = [
 	"/system-prompt list            List Markdown files",
 	"/system-prompt status          Show settings and file health",
 	"/system-prompt toggle          Enable or disable the selected prompt",
-	"/system-prompt view            View Pi's complete current system prompt",
+	"/system-prompt view            Preview the selected system prompt and mode",
 	"/system-prompt view <name>     View a Markdown file without selecting it",
 	"/system-prompt help            Show these commands",
 ].join("\n");
@@ -29,6 +29,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	let promptError: string | undefined;
 	let lastWarning: string | undefined;
 	let initialized = false;
+	let incomingPrompt: string | undefined;
 	try {
 		settings = await loadSettings(paths.settings);
 	} catch (error) {
@@ -123,10 +124,12 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
+		incomingPrompt = undefined;
 		await initialize(ctx);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
+		incomingPrompt = event.systemPrompt;
 		if (!initialized) await initialize(ctx);
 		if (configError || overrideError) return;
 		// Keep the selected file and mode together if a command runs during the read.
@@ -142,7 +145,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	});
 
 	pi.registerCommand("system-prompt", {
-		description: "Manage system prompts and view Pi's complete current prompt",
+		description: "Manage system prompts and preview the selected prompt",
 		getArgumentCompletions: async (prefix) => {
 			const commands = ["use", "mode", "list", "status", "toggle", "view", "help"];
 			if (prefix.startsWith("mode ")) {
@@ -197,8 +200,19 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 					case "view": {
 						if (ctx.mode !== "tui") throw new Error("The full-screen prompt viewer requires Pi's interactive terminal mode.");
 						const prompt = value ? await resolvePrompt(paths.prompts, value) : undefined;
-						const content = prompt ? await readPrompt(paths.prompts, prompt) : ctx.getSystemPrompt();
-						const title = prompt ? `Prompt file: ${prompt}` : "Current Pi system prompt";
+						let content: string;
+						if (prompt) content = await readPrompt(paths.prompts, prompt);
+						else {
+							if (configError || overrideError) throw new Error(configError ?? overrideError);
+							const selected = settings;
+							const { custom, error } = await checkPrompt(selected);
+							updateFooter(ctx);
+							if (error) throw new Error(error);
+							// Recompose from the incoming prompt, never our previous output.
+							const base = incomingPrompt ?? ctx.getSystemPrompt();
+							content = custom === undefined ? base : composePrompt(base, custom, selected.mode);
+						}
+						const title = prompt ? `Prompt file: ${prompt}` : "System prompt preview";
 						await ctx.ui.custom<void>((tui, theme, keybindings, done) =>
 							new PromptViewer(tui, theme, keybindings, title, content, () => done()), {
 								overlay: true,

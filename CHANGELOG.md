@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Preview the selected prompt, mode, and file edits immediately with `/system-prompt view`.
+- Avoid duplicating custom content when viewing a prompt after a run.
+
 ## 0.1.1
 
 - Update the npm repository, homepage, and issue links to `thgilciffart/pi-system-prompt`.

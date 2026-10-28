@@ -58,7 +58,10 @@ async function load(paths: Paths, flags: Record<string, string | undefined> = {}
 		},
 	} as unknown as ExtensionCommandContext;
 	await registerPlugin(pi, paths);
-	const start = () => handlers.get("session_start")!({ type: "session_start" }, ctx);
+	const start = (base?: string) => {
+		if (base !== undefined) currentSystemPrompt = base;
+		return handlers.get("session_start")!({ type: "session_start" }, ctx);
+	};
 	const run = async (base = "Pi base prompt"): Promise<BeforeAgentStartEventResult | undefined> => {
 		const result = await handlers.get("before_agent_start")!({ systemPrompt: base } as BeforeAgentStartEvent, ctx) as BeforeAgentStartEventResult | undefined;
 		currentSystemPrompt = result?.systemPrompt ?? base;
@@ -230,13 +233,12 @@ test("explicit commands and startup overrides work without dialogs", async (t) =
 	assert.equal((await plugin.run())?.systemPrompt, "Review the backend.\n\nPi base prompt");
 });
 
-test("view opens the full current Pi prompt and does not apply pending changes twice", async (t) => {
+test("view previews current settings before a run and avoids duplicate composition", async (t) => {
 	const paths = await fixture(t);
 	const plugin = await load(paths);
 	await plugin.command("view");
-	assert.match(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Current Pi system prompt[\s\S]*Pi base prompt/);
+	assert.match(plugin.viewers.at(-1)!.component.render(100).join("\n"), /System prompt preview[\s\S]*Pi base prompt/);
 	await plugin.command("use reviewer");
-	await plugin.run();
 	const stored = await readFile(paths.settings, "utf8");
 	await plugin.command("view");
 	const view = plugin.viewers.at(-1)!;
@@ -247,13 +249,50 @@ test("view opens the full current Pi prompt and does not apply pending changes t
 		overlay: true,
 		overlayOptions: { width: "100%", maxHeight: "100%", row: 0, col: 0, margin: 0 },
 	});
+	await plugin.run();
+	await plugin.command("view");
+	assert.equal(plugin.viewers.at(-1)!.component.render(100).join("\n").split("Review carefully").length - 1, 1);
 	await plugin.command("mode replace");
 	await plugin.command("view");
-	assert.match(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Pi base prompt/);
+	assert.doesNotMatch(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Pi base prompt/);
 	await plugin.run();
 	await plugin.command("view");
 	assert.doesNotMatch(plugin.viewers.at(-1)!.component.render(100).join("\n"), /Pi base prompt/);
 	assert.equal((await loadSettings(paths.settings)).prompt, JSON.parse(stored).prompt);
+});
+
+test("view rereads files and reflects mode, selection, toggle, and session changes", async (t) => {
+	const paths = await fixture(t);
+	const plugin = await load(paths);
+	const view = async () => {
+		await plugin.command("view");
+		return plugin.viewers.at(-1)!.component.render(100).join("\n");
+	};
+	await plugin.command("use reviewer");
+	await plugin.run("Earlier extension");
+	await writeFile(join(paths.prompts, "reviewer.md"), "Edited prompt");
+	assert.match(await view(), /Earlier extension[\s\S]*Edited prompt/);
+	await plugin.command("mode prepend");
+	assert.match(await view(), /Edited prompt[\s\S]*Earlier extension/);
+	await plugin.command("mode replace");
+	await plugin.run();
+	await plugin.command("use review/backend");
+	assert.match(await view(), /Review the backend/);
+	assert.doesNotMatch(await view(), /Edited prompt/);
+	await plugin.command("toggle");
+	assert.match(await view(), /Pi base prompt/);
+	assert.doesNotMatch(await view(), /Review the backend/);
+	await plugin.command("toggle");
+	await rm(join(paths.prompts, "review", "backend.md"));
+	const count = plugin.viewers.length;
+	await plugin.command("view");
+	assert.equal(plugin.viewers.length, count);
+	assert.equal(plugin.notifications.at(-1)!.type, "error");
+	await plugin.command("toggle");
+	await plugin.run("Previous session");
+	await plugin.start("New session");
+	assert.match(await view(), /New session/);
+	assert.doesNotMatch(await view(), /Previous session/);
 });
 
 test("viewing a named file does not select it or save settings", async (t) => {

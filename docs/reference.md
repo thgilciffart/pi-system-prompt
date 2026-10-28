@@ -12,7 +12,7 @@ Arguments support tab completion. Names are case-sensitive paths relative to the
 | `/system-prompt list` | Lists files. An asterisk marks the selection, even when disabled. |
 | `/system-prompt status` | Shows the enabled state, selection, mode, paths, and errors. |
 | `/system-prompt toggle` | Toggles the selected file. Checks the file before enabling it; requires a selection. |
-| `/system-prompt view [name]` | Shows Pi's current system prompt, or reads a named file without selecting it. |
+| `/system-prompt view [name]` | Previews the selected prompt and mode, or reads a named file without selecting it. |
 | `/system-prompt help` | Shows usage. |
 
 Pickers require dialog support. Explicit commands also work with RPC clients, except the viewer, which requires terminal mode.
@@ -30,7 +30,9 @@ The viewer displays wrapped plain text and removes terminal control sequences. I
 
 Pi's selection keys also apply. Mouse wheel scrolling works when Pi forwards mouse events.
 
-With no name, `view` reads `ctx.getSystemPrompt()`. Selection, toggle, mode, and file changes appear there only after the next run starts. This view works even when the extension is disabled. Provider-specific changes may still alter the model request.
+With no name, `view` rereads the selected file and applies the current mode. Selection, toggle, mode, and file changes appear immediately, before another message is sent. Viewing does not save settings.
+
+The preview uses the incoming prompt captured at the start of the most recent run. Before the first run in a session, it uses Pi's current prompt. Disabling the extension previews that incoming prompt. Earlier extensions' changes appear after a run; later extensions and provider-specific changes are outside this preview. If the selected file cannot be read, the viewer reports an error.
 
 ## Prompt directory
 

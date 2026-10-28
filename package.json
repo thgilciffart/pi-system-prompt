@@ -1,6 +1,6 @@
 {
 	"name": "system-prompt",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Choose Markdown system prompts for Pi and prepend, append, or replace the default prompt.",
 	"type": "module",
 	"license": "MIT",
@@ -11,11 +11,32 @@
 	},
 	"homepage": "https://github.com/thgilciffart/pi-system-prompt#readme",
 	"bugs": "https://github.com/thgilciffart/pi-system-prompt/issues",
-	"keywords": ["pi-package", "pi", "extension", "system-prompt", "markdown"],
-	"files": ["src", "docs", "examples", "README.md", "CHANGELOG.md", "LICENSE"],
-	"pi": { "extensions": ["./src/index.ts"] },
-	"engines": { "node": ">=22.19.0" },
-	"publishConfig": { "access": "public" },
+	"keywords": [
+		"pi-package",
+		"pi",
+		"extension",
+		"system-prompt",
+		"markdown"
+	],
+	"files": [
+		"src",
+		"docs",
+		"examples",
+		"README.md",
+		"CHANGELOG.md",
+		"LICENSE"
+	],
+	"pi": {
+		"extensions": [
+			"./src/index.ts"
+		]
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",
 		"test": "tsx --test test/*.test.ts",
@@ -27,7 +48,9 @@
 		"@earendil-works/pi-tui": "*"
 	},
 	"overrides": {
-		"@earendil-works/pi-coding-agent": { "undici": "^8.12.2" }
+		"@earendil-works/pi-coding-agent": {
+			"undici": "^8.12.2"
+		}
 	},
 	"devDependencies": {
 		"@earendil-works/pi-coding-agent": "1.4.0",
