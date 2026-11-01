@@ -1,5 +1,6 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { PromptViewer } from "./viewer.ts";
+import { expandPrompt, promptValues, type PromptValues } from "./template.ts";
 import {
 	composePrompt, defaultSettings, isMode, listPrompts, loadSettings, MODES,
 	readPrompt, resolvePrompt, saveSettings, type Paths, type Settings,
@@ -29,7 +30,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	let promptError: string | undefined;
 	let lastWarning: string | undefined;
 	let initialized = false;
-	let incomingPrompt: string | undefined;
+	let incomingValues: PromptValues | undefined;
 	try {
 		settings = await loadSettings(paths.settings);
 	} catch (error) {
@@ -53,19 +54,24 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 		else process.stderr.write(`${message}\n`);
 	}
 
-	async function checkPrompt(selected = settings): Promise<{ custom?: string; error?: string }> {
+	async function checkPrompt(selected = settings, values?: PromptValues): Promise<{ custom?: string; error?: string }> {
 		let custom: string | undefined;
 		let error: string | undefined;
 		try {
 			if (selected.enabled) {
 				if (!selected.prompt) throw new Error("No prompt selected. Run /system-prompt use <name>.");
 				custom = await readPrompt(paths.prompts, selected.prompt);
+				if (values) custom = expandPrompt(custom, values);
 			}
 		} catch (cause) {
 			error = errorMessage(cause);
 		}
 		if (selected === settings) promptError = error;
 		return { custom, error };
+	}
+
+	function previewValues(ctx: ExtensionCommandContext): PromptValues {
+		return incomingValues ?? promptValues(ctx.getSystemPrompt(), ctx.cwd, ctx.getSystemPromptOptions?.());
 	}
 
 	async function initialize(ctx: ExtensionContext): Promise<void> {
@@ -124,24 +130,25 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	}
 
 	pi.on("session_start", async (_event, ctx) => {
-		incomingPrompt = undefined;
+		incomingValues = undefined;
 		await initialize(ctx);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		incomingPrompt = event.systemPrompt;
+		const values = promptValues(event.systemPrompt, ctx.cwd, event.systemPromptOptions);
+		incomingValues = values;
 		if (!initialized) await initialize(ctx);
 		if (configError || overrideError) return;
 		// Keep the selected file and mode together if a command runs during the read.
 		const selected = settings;
-		const { custom, error } = await checkPrompt(selected);
+		const { custom, error } = await checkPrompt(selected, values);
 		updateFooter(ctx);
 		if (error) {
 			warn(ctx, `system-prompt: ${error} Keeping Pi's incoming system prompt.`);
 			return;
 		}
 		lastWarning = undefined;
-		if (custom !== undefined) return { systemPrompt: composePrompt(event.systemPrompt, custom, selected.mode) };
+		if (custom !== undefined) return { systemPrompt: composePrompt(values.system_prompt, custom, selected.mode) };
 	});
 
 	pi.registerCommand("system-prompt", {
@@ -205,11 +212,12 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 						else {
 							if (configError || overrideError) throw new Error(configError ?? overrideError);
 							const selected = settings;
-							const { custom, error } = await checkPrompt(selected);
+							const values = previewValues(ctx);
+							const { custom, error } = await checkPrompt(selected, values);
 							updateFooter(ctx);
 							if (error) throw new Error(error);
 							// Recompose from the incoming prompt, never our previous output.
-							const base = incomingPrompt ?? ctx.getSystemPrompt();
+							const base = values.system_prompt;
 							content = custom === undefined ? base : composePrompt(base, custom, selected.mode);
 						}
 						const title = prompt ? `Prompt file: ${prompt}` : "System prompt preview";
@@ -230,7 +238,7 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 					}
 					case "status": {
 						if (value) throw new Error("Usage: /system-prompt status");
-						await checkPrompt();
+						await checkPrompt(settings, previewValues(ctx));
 						updateFooter(ctx);
 						ctx.ui.notify([
 							`State: ${configError || overrideError || promptError ? "error" : settings.enabled ? "enabled" : "disabled"}`,

@@ -30,9 +30,9 @@ The viewer displays wrapped plain text and removes terminal control sequences. I
 
 Pi's selection keys also apply. Mouse wheel scrolling works when Pi forwards mouse events.
 
-With no name, `view` rereads the selected file and applies the current mode. Selection, toggle, mode, and file changes appear immediately, before another message is sent. Viewing does not save settings.
+With no name, `view` rereads the selected file, expands placeholders, and applies the current mode. Selection, toggle, mode, and file changes appear immediately, before another message is sent. Viewing does not save settings. With a name, `view` shows the file's source, including unexpanded placeholders.
 
-The preview uses the incoming prompt captured at the start of the most recent run. Before the first run in a session, it uses Pi's current prompt. Disabling the extension previews that incoming prompt. Earlier extensions' changes appear after a run; later extensions and provider-specific changes are outside this preview. If the selected file cannot be read, the viewer reports an error.
+The preview uses the incoming prompt and placeholder values captured at the start of the most recent run. Before the first run in a session, it uses Pi's current prompt and context. Disabling the extension previews that incoming prompt. Earlier extensions' changes appear after a run; later extensions and provider-specific changes are outside this preview. If the selected file cannot be read or expanded, the viewer reports an error.
 
 ## Prompt directory
 
@@ -40,13 +40,34 @@ Prompts live in `~/.pi/agent/system-prompts/`. `PI_CODING_AGENT_DIR` moves both 
 
 Discovery includes regular Markdown files in subdirectories, including hidden files, with a case-insensitive `.md` extension. It excludes symlinks. Reads reject paths outside the prompt directory. A missing directory is an empty library.
 
-Each entire UTF-8 file is one prompt, including headings, frontmatter, and whitespace. Empty or whitespace-only files are rejected. Selecting a file does not load other files.
+Each entire UTF-8 file is one prompt, including headings, frontmatter, and whitespace. Known placeholders expand as described below. Empty or whitespace-only files are rejected. Selecting a file does not load other files.
+
+## Placeholders
+
+The extension expands these case-sensitive placeholders before each run, before applying the selected mode. Spaces or tabs inside the braces are optional, so `{{ cwd }}` also works.
+
+| Placeholder | Value |
+| --- | --- |
+| `{{system_prompt}}` | The complete incoming system prompt, including earlier extensions' changes. |
+| `{{cwd}}` | Pi's current working directory. |
+| `{{skills}}` | Pi's available skill list and loading instructions. Respects disabled skills and available reader tools. |
+| `{{project_context}}` | Pi's loaded project instructions, including `AGENTS.md`, with their file paths. |
+| `{{docs}}` | The contents of the incoming prompt's `<docs>` section, including Pi documentation paths and instructions. |
+| `{{rules}}` | The contents of the incoming prompt's `<rules>` section, including tool guidelines and extension additions. |
+
+Section values omit their outer section tags. Project instructions retain their `<project_instructions>` tags. Skills use Pi's formatter, which includes skill names, descriptions, and file locations. The placeholder does not read full skill files.
+
+Dynamic sections use Pi 1.4's prompt format and context API. Without that API, `{{skills}}` and `{{project_context}}` report an error. Missing docs or rules sections and empty skill or context lists expand to empty strings. Earlier extensions' explicit skill and project context section overrides also apply.
+
+Unknown placeholders remain literal text. Expansion makes one pass over the prompt file. Inserted values are not expanded again. Placeholders do not execute shell commands or JavaScript.
+
+All three modes retain their usual behavior. In append or prepend mode, `{{system_prompt}}` duplicates the incoming prompt. Replace mode includes only the file's expanded content. An expansion that leaves the whole file empty or whitespace-only reports an error and keeps the incoming prompt.
 
 ## Prompt behavior
 
 The extension starts disabled with no selection and `append` mode. Selecting a file enables it.
 
-It changes `event.systemPrompt` during `before_agent_start`. Given an incoming prompt `base` and file content `custom`:
+It changes `event.systemPrompt` during `before_agent_start`. Given an incoming prompt `base` and expanded file content `custom`:
 
 | Mode | Result |
 | --- | --- |
@@ -56,11 +77,11 @@ It changes `event.systemPrompt` during `before_agent_start`. Given an incoming p
 
 If `base` is empty, every mode returns `custom` without a separator.
 
-The incoming prompt includes earlier extensions' changes. Later extensions can modify this result. Replace removes the incoming instructions, including Pi context, `AGENTS.md`, skills, and command-line prompt additions. It does not remove tool definitions or history. Text position does not guarantee instruction priority.
+The incoming prompt includes earlier extensions' changes. Later extensions can modify this result. Replace includes incoming instructions only through placeholders in the file. Without placeholders, it removes Pi context, `AGENTS.md`, skills, and command-line prompt additions. It does not remove tool definitions or history. Text position does not guarantee instruction priority.
 
 The file is read before each run, without accumulating copies. File edits and command changes during a run apply to the next run.
 
-If the file is missing, unreadable, empty, or outside the directory, the extension keeps the incoming prompt and reports an error. It retries next run. The footer shows `system-prompt: error`; identical errors do not repeat notifications. Print and JSON modes report errors to standard error.
+If the file is missing, unreadable, empty, outside the directory, or cannot be expanded, the extension keeps the incoming prompt and reports an error. It retries next run. The footer shows `system-prompt: error`; identical errors do not repeat notifications. Print and JSON modes report errors to standard error.
 
 ## Saved settings
 

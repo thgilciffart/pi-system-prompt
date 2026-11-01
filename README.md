@@ -43,7 +43,37 @@ The selection applies on your next message. Append is the default mode. The exte
 /system-prompt mode replace
 ```
 
-Replace discards the incoming system prompt, including Pi's built-in instructions and loaded context. Tool definitions and conversation history remain. See [prompt behavior](docs/reference.md#prompt-behavior) for extension ordering and error handling.
+Replace uses your file as the complete prompt. Include the placeholders below to keep Pi's dynamic sections. Tool definitions and conversation history remain. See [prompt behavior](docs/reference.md#prompt-behavior) for extension ordering and error handling.
+
+## Include dynamic Pi context
+
+Use placeholders in your Markdown to put Pi's context where you want it. For example, save this as `~/.pi/agent/system-prompts/custom.md`:
+
+```markdown
+You are my coding assistant. Explain your decisions clearly.
+
+Working directory: {{cwd}}
+
+{{rules}}
+
+{{docs}}
+
+{{skills}}
+
+{{project_context}}
+```
+
+Select it in replace mode, then preview the expanded prompt:
+
+```text
+/system-prompt use custom
+/system-prompt mode replace
+/system-prompt view
+```
+
+Use Pi 1.4 or later for dynamic sections. The extension refreshes values before each run. `{{system_prompt}}` inserts the entire incoming Pi prompt, including earlier extensions' changes. Use replace mode with that placeholder to include the incoming prompt once.
+
+See the [placeholder reference](docs/reference.md#placeholders) for each value, or copy [the dynamic prompt example](examples/dynamic.md).
 
 ## Inspect or toggle
 

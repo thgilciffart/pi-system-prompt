@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import type {
-	BeforeAgentStartEvent, BeforeAgentStartEventResult, ExtensionAPI, ExtensionCommandContext,
+	BeforeAgentStartEvent, BeforeAgentStartEventResult, BuildSystemPromptOptions, ExtensionAPI, ExtensionCommandContext,
 	ExtensionContext, RegisteredCommand, Theme,
 } from "@earendil-works/pi-coding-agent";
 import { getKeybindings, type Component, type TUI } from "@earendil-works/pi-tui";
@@ -44,7 +44,9 @@ async function load(paths: Paths, flags: Record<string, string | undefined> = {}
 	const ctx = {
 		hasUI: true,
 		mode: "tui",
+		cwd: "/project",
 		getSystemPrompt: () => currentSystemPrompt,
+		getSystemPromptOptions: () => ({ cwd: "/project" }),
 		ui: {
 			notify: (message: string, type?: string) => notifications.push({ message, type }),
 			setStatus: (key: string, text: string) => statuses.set(key, text),
@@ -62,8 +64,8 @@ async function load(paths: Paths, flags: Record<string, string | undefined> = {}
 		if (base !== undefined) currentSystemPrompt = base;
 		return handlers.get("session_start")!({ type: "session_start" }, ctx);
 	};
-	const run = async (base = "Pi base prompt"): Promise<BeforeAgentStartEventResult | undefined> => {
-		const result = await handlers.get("before_agent_start")!({ systemPrompt: base } as BeforeAgentStartEvent, ctx) as BeforeAgentStartEventResult | undefined;
+	const run = async (base = "Pi base prompt", options: BuildSystemPromptOptions = ctx.getSystemPromptOptions()): Promise<BeforeAgentStartEventResult | undefined> => {
+		const result = await handlers.get("before_agent_start")!({ systemPrompt: base, systemPromptOptions: options } as BeforeAgentStartEvent, ctx) as BeforeAgentStartEventResult | undefined;
 		currentSystemPrompt = result?.systemPrompt ?? base;
 		return result;
 	};
@@ -108,6 +110,48 @@ test("each run rereads the file, preserves earlier extension changes, and avoids
 	assert.equal((await plugin.run("Earlier extension"))?.systemPrompt, "Earlier extension\n\nUpdated prompt");
 	await plugin.start();
 	assert.equal((await plugin.run("New session"))?.systemPrompt, "New session\n\nUpdated prompt");
+});
+
+test("templates expand fresh context each run before applying the selected mode", async (t) => {
+	const paths = await fixture(t);
+	await writeFile(join(paths.prompts, "dynamic.md"), "Custom {{cwd}}\n{{system_prompt}}\n{{project_context}}");
+	const plugin = await load(paths);
+	await plugin.command("use dynamic");
+	await plugin.command("mode replace");
+	const options = { cwd: "/first", contextFiles: [{ path: "/first/AGENTS.md", content: "First instructions" }] };
+	const first = (await plugin.run("Earlier extension", options))!.systemPrompt!;
+	assert.match(first, /^Custom \/first\nEarlier extension\n/);
+	assert.match(first, /First instructions/);
+	const next = { cwd: "/second", contextFiles: [{ path: "/second/AGENTS.md", content: "Second instructions" }] };
+	const second = (await plugin.run("Fresh base", next))!.systemPrompt!;
+	assert.match(second, /^Custom \/second\nFresh base\n/);
+	assert.doesNotMatch(second, /First instructions|Earlier extension/);
+	await writeFile(join(paths.prompts, "dynamic.md"), "Working in {{cwd}}");
+	await plugin.command("mode append");
+	assert.equal((await plugin.run("Base", next))?.systemPrompt, "Base\n\nWorking in /second");
+	await plugin.command("mode prepend");
+	assert.equal((await plugin.run("Base", next))?.systemPrompt, "Working in /second\n\nBase");
+});
+
+test("empty expansions preserve the incoming prompt, report an error, and recover", async (t) => {
+	const paths = await fixture(t);
+	await writeFile(join(paths.prompts, "dynamic.md"), "{{skills}}\n{{project_context}}\n{{docs}}\n{{rules}}");
+	const plugin = await load(paths);
+	await plugin.command("use dynamic");
+	await plugin.command("mode replace");
+	assert.equal(await plugin.run(), undefined);
+	assert.equal(plugin.statuses.get("system-prompt"), "system-prompt: error");
+	assert.match(plugin.notifications.at(-1)!.message, /empty after expanding placeholders/);
+	const count = plugin.notifications.length;
+	await plugin.run();
+	assert.equal(plugin.notifications.length, count);
+	await plugin.command("status");
+	assert.match(plugin.notifications.at(-1)!.message, /State: error[\s\S]*empty after expanding placeholders/);
+	await plugin.command("view");
+	assert.equal(plugin.viewers.length, 0);
+	await writeFile(join(paths.prompts, "dynamic.md"), "Custom {{cwd}}");
+	assert.equal((await plugin.run())?.systemPrompt, "Custom /project");
+	assert.equal(plugin.statuses.get("system-prompt"), "system-prompt: dynamic.md (replace)");
 });
 
 test("missing and empty active files preserve Pi's prompt, report errors, and recover", async (t) => {
@@ -293,6 +337,32 @@ test("view rereads files and reflects mode, selection, toggle, and session chang
 	await plugin.start("New session");
 	assert.match(await view(), /New session/);
 	assert.doesNotMatch(await view(), /Previous session/);
+});
+
+test("view expands templates before a run, captures incoming values, and resets on session changes", async (t) => {
+	const paths = await fixture(t);
+	await writeFile(join(paths.prompts, "dynamic.md"), "Custom {{cwd}}\n{{rules}}\n{{docs}}\n{{system_prompt}}");
+	const plugin = await load(paths);
+	await plugin.command("use dynamic");
+	await plugin.command("mode replace");
+	const view = async () => {
+		await plugin.command("view");
+		return plugin.viewers.at(-1)!.component.render(120).join("\n");
+	};
+	assert.match(await view(), /Custom \/project[\s\S]*Pi base prompt/);
+	const options = { cwd: "/during-run" };
+	await plugin.run("Incoming <literal>", options);
+	// Later handlers mutate the same options object. The preview keeps our incoming values.
+	options.cwd = "/later-extension";
+	const rendered = await view();
+	assert.match(rendered, /Custom \/during-run[\s\S]*Incoming <literal>/);
+	assert.equal(rendered.split("Custom /during-run").length - 1, 1);
+	assert.doesNotMatch(rendered, /{{cwd}}|later-extension/);
+	await plugin.command("view dynamic");
+	assert.match(plugin.viewers.at(-1)!.component.render(120).join("\n"), /Custom {{cwd}}/);
+	await plugin.start("New session");
+	assert.match(await view(), /Custom \/project[\s\S]*New session/);
+	assert.doesNotMatch(await view(), /Incoming <literal>|during-run/);
 });
 
 test("viewing a named file does not select it or save settings", async (t) => {

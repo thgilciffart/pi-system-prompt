@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Expand `{{system_prompt}}`, `{{cwd}}`, `{{skills}}`, `{{project_context}}`, `{{docs}}`, and `{{rules}}` in Markdown prompts before each run.
+- Show expanded placeholders in the selected prompt preview. Named file views retain the source text.
+- Add a dynamic prompt example and document placeholder behavior.
+
 ## 0.1.2
 
 - Preview the selected prompt, mode, and file edits immediately with `/system-prompt view`.
