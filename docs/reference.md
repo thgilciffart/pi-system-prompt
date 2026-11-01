@@ -64,7 +64,9 @@ If the file is missing, unreadable, empty, or outside the directory, the extensi
 
 ## Saved settings
 
-Settings live in `~/.pi/agent/system-prompt.json`, separate from Pi's `settings.json`.
+Settings live in `~/.pi/agent/system-prompts/system-prompt.json`, alongside the prompt files.
+
+To keep existing settings, move `~/.pi/agent/system-prompt.json` into `~/.pi/agent/system-prompts/` before reloading the extension.
 
 ```json
 {

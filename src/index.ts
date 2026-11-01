@@ -6,6 +6,6 @@ export default async function systemPromptExtension(pi: ExtensionAPI): Promise<v
 	const agentDir = getAgentDir();
 	await registerPlugin(pi, {
 		prompts: join(agentDir, "system-prompts"),
-		settings: join(agentDir, "system-prompt.json"),
+		settings: join(agentDir, "system-prompts", "system-prompt.json"),
 	});
 }
