@@ -1,6 +1,6 @@
 {
 	"name": "system-prompt",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"description": "Choose Markdown system prompts for Pi and prepend, append, or replace the default prompt.",
 	"type": "module",
 	"license": "MIT",

@@ -1,6 +1,6 @@
 # system-prompt
 
-Use a Markdown file to prepend, append, or replace [Pi](https://pi.dev)'s system prompt.
+Choose Markdown system prompts for [Pi](https://pi.dev) and prepend, append, or replace the default prompt.
 
 ## Install
 
@@ -84,6 +84,8 @@ See the [placeholder reference](docs/reference.md#placeholders) for each value, 
 | `/system-prompt view` | Preview the selected prompt and mode immediately. |
 | `/system-prompt view reviewer` | Read a file without selecting it. |
 | `/system-prompt toggle` | Disable or enable the selected file without forgetting it. |
+
+The `system-prompt` status line in Pi's footer is only shown in the terminal UI, not when Pi is driven over RPC by a client such as T3 Code.
 
 The viewer requires terminal mode. Scroll with arrow keys or Page Up and Page Down. Press Esc or `q` to close.
 

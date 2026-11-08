@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
 
 - Set the `system-prompt` status line only in TUI mode, so RPC clients such as T3 Code no longer receive it as a popup.
 - Expand `{{system_prompt}}`, `{{cwd}}`, `{{skills}}`, `{{project_context}}`, `{{docs}}`, and `{{rules}}` in Markdown prompts before each run.
