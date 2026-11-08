@@ -41,7 +41,9 @@ export async function registerPlugin(pi: ExtensionAPI, paths: Paths): Promise<vo
 	pi.registerFlag("system-prompt-mode", { type: "string", description: "System prompt mode: prepend, append, or replace" });
 
 	function updateFooter(ctx: ExtensionContext): void {
-		if (!ctx.hasUI) return;
+		// Only the TUI renders status lines in its footer. In RPC mode hasUI is true
+		// but setStatus is forwarded to the client as a popup, so skip it there.
+		if (!ctx.hasUI || ctx.mode !== "tui") return;
 		const status = configError || overrideError || promptError ? "system-prompt: error" : settings.enabled && settings.prompt
 			? `system-prompt: ${settings.prompt} (${settings.mode})` : "system-prompt: off";
 		ctx.ui.setStatus("system-prompt", status);

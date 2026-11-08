@@ -81,7 +81,9 @@ The incoming prompt includes earlier extensions' changes. Later extensions can m
 
 The file is read before each run, without accumulating copies. File edits and command changes during a run apply to the next run.
 
-If the file is missing, unreadable, empty, outside the directory, or cannot be expanded, the extension keeps the incoming prompt and reports an error. It retries next run. The footer shows `system-prompt: error`; identical errors do not repeat notifications. Print and JSON modes report errors to standard error.
+If the file is missing, unreadable, empty, outside the directory, or cannot be expanded, the extension keeps the incoming prompt and reports an error. It retries next run. The TUI footer shows `system-prompt: error`; identical errors do not repeat notifications. Print and JSON modes report errors to standard error.
+
+The `system-prompt` status line is only set in Pi's TUI. RPC clients (which report `hasUI: true` but run with mode `rpc`) do not receive it, because there `setStatus` is delivered as a popup notification.
 
 ## Saved settings
 

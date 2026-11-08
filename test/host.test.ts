@@ -29,6 +29,7 @@ test("Pi discovers the package manifest, loads TypeScript, and applies startup f
 	const statuses: string[] = [];
 	const ctx = {
 		hasUI: true,
+		mode: "tui",
 		ui: {
 			notify: (message: string) => assert.fail(message),
 			setStatus: (_key: string, value: string) => statuses.push(value),

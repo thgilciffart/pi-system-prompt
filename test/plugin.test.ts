@@ -378,6 +378,21 @@ test("viewing a named file does not select it or save settings", async (t) => {
 	assert.equal(plugin.notifications.at(-1)!.type, "error");
 });
 
+test("the status line is only set in TUI mode, not in RPC clients like T3 Code", async (t) => {
+	const paths = await fixture(t);
+	await saveSettings(paths.settings, { enabled: true, prompt: "reviewer.md", mode: "append" });
+	const plugin = await load(paths);
+	plugin.ctx.mode = "rpc";
+	plugin.ctx.hasUI = true; // RPC mode is dialog-capable, but setStatus becomes a client popup.
+	await plugin.start();
+	await plugin.run();
+	await plugin.command("status");
+	assert.equal(plugin.statuses.size, 0);
+	plugin.ctx.mode = "tui";
+	await plugin.start();
+	assert.equal(plugin.statuses.get("system-prompt"), "system-prompt: reviewer.md (append)");
+});
+
 test("the full-screen viewer rejects RPC and print modes before opening custom UI", async (t) => {
 	const paths = await fixture(t);
 	const plugin = await load(paths);
